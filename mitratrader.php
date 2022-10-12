@@ -1,0 +1,105 @@
+<?php
+
+
+namespace AleeDhillon\MetaFive;
+
+use AleeDhillon\MetaFive\Entities\Trade;
+use AleeDhillon\MetaFive\Entities\User;
+use AleeDhillon\MetaFive\Exceptions\ConnectionException;
+use AleeDhillon\MetaFive\Exceptions\TradeException;
+use AleeDhillon\MetaFive\Exceptions\UserException;
+use AleeDhillon\MetaFive\Lib\MTAuthProtocol;
+use AleeDhillon\MetaFive\Lib\MTConnect;
+use AleeDhillon\MetaFive\Lib\MTLogger;
+use AleeDhillon\MetaFive\Lib\MTRetCode;
+use AleeDhillon\MetaFive\Lib\MTTradeProtocol;
+use AleeDhillon\MetaFive\Lib\MTUser;
+use AleeDhillon\MetaFive\Lib\MTUserProtocol;
+use AleeDhillon\MetaFive\Lib\MTOrderProtocol;
+use AleeDhillon\MetaFive\Lib\MTEnDealAction;
+use AleeDhillon\MetaFive\Lib\MTHistoryProtocol;
+use AleeDhillon\MetaFive\Lib\MTOrder;
+use AleeDhillon\MetaFive\Lib\MTPositionProtocol;
+use AleeDhillon\MetaFive\Lib\MTPosition;
+use AleeDhillon\MetaFive\Traits\Deal;
+use AleeDhillon\MetaFive\Lib\MTDealProtocol;
+use AleeDhillon\MetaFive\Lib\MTGroupProtocol;
+use AleeDhillon\MetaFive\Entities\Order;
+use AleeDhillon\MetaFive\Lib\CMT5Request;
+use stdClass;
+
+//+------------------------------------------------------------------+
+//--- web api version
+define("WebAPIVersion", 2980);
+//--- web api date
+define("WebAPIDate", "18 June 2021");
+
+class Client
+{
+    use Deal;
+    /**
+     * @var MTConnect $m_connect
+     */
+    protected $m_connect;
+    //--- name agent
+    protected $server;
+    //--- is set crypt connection
+    protected $port;
+    protected $username;
+    protected $password;
+    private   $m_agent    = 'WebAPI';
+    private   $m_is_crypt = true;
+    /**
+     * @var bool
+     */
+    private $debug;
+
+    /**
+     * Provide credentials, if not set wil be taken from config file
+     *
+     * @param string|null $server
+     * @param int|null $port
+     * @param string|null $username
+     * @param string|null $password
+     * @param bool|null $debug
+     */
+    public function __construct($server = null, $port = null, $username = null, $password = null, $debug = null)
+    {
+        $file_path = 'logs/';
+        $this->m_agent = "WebAPI";
+        $this->m_is_crypt = true;
+        MTLogger::Init($this->m_agent, $debug, $file_path);
+
+        $this->server = $server ?? config('meta-five.server');
+        $this->port = $port ?? config('meta-five.port');
+        $this->username = $username ?? config('meta-five.login');
+        $this->password = $password ?? config('meta-five.password');
+        $this->debug = is_null($debug) ? config('app.debug') : $debug;
+    }
+
+    /**
+     * Create trade record such as Deposit or Withdrawal
+     * @param Trade $trade
+     * @return Trade
+     * @throws ConnectionException
+     * @throws TradeException
+     */
+    public function trade(Trade $trade): Trade
+    {
+        if (!$this->isConnected()) {
+            $conn = $this->connect();
+            if ($conn != MTRetCode::MT_RET_OK) {
+                throw new ConnectionException(MTRetCode::GetError($conn));
+            }
+        }
+        $mt_trade = new MTTradeProtocol($this->m_connect);
+        $ticket = null;
+
+        $call = $mt_trade->TradeBalance($trade->getLogin(), $trade->getType(), $trade->getAmount(), $trade->getComment(), $ticket);
+        if ($call != MTRetCode::MT_RET_OK) {
+            throw new TradeException(MTRetCode::GetError($call));
+        }
+        $trade->setTicket($ticket);
+        return $trade;
+}
+?>
